@@ -8,3 +8,7 @@ clashgo.exe
 # Local data (if any)
 build/
 dist/
+
+# 构建产物目录：只保留占位文件，不提交任何二进制
+cmd/setup/payload/*
+!cmd/setup/payload/.keep

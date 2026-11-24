@@ -4,7 +4,7 @@
 
 ## 后端参考：Clash Verge Rev 架构
 
-> 来源：`D:/code/clash/clash-verge-rev/src-tauri/src`（Rust + Tauri，v2.6.0，只读研究）。
+> 来源：Clash Verge Rev 的 `src-tauri/src`（Rust + Tauri，v2.6.0，只读研究）。
 > 用于与本项目纯 Go 后端的实现对照。
 
 ## 分层
@@ -84,7 +84,7 @@
 
 ## UI 参考：Clash Verge Rev 信息架构
 
-> 来源：`D:/code/clash/clash-verge-rev` 源码（只读研究），用于本项目的界面对齐。
+> 来源：Clash Verge Rev v2.6.0 源码（只读研究），用于本项目的界面对齐。
 > 前端为 React + MUI + Tauri，本项目用纯 Go (mygo, immediate mode) 实现等价布局。
 
 ## 全局框架

@@ -23,6 +23,9 @@ func (a *App) pageHome(c *ui.Context) {
 			a.onboardingBanner(c)
 		}
 
+		// 所有节点都不可用时的告警（仅提示，不自动改系统代理）
+		a.allNodesDownBanner(c)
+
 		// 大状态卡：整卡可点开关系统代理，显示已转发流量（参考移动版设计）
 		a.proxyStatusCard(c)
 
@@ -167,8 +170,8 @@ func (a *App) pageHome(c *ui.Context) {
 
 func (a *App) refreshExitIP() {
 	port := a.Settings.MixedPort
-	if a.effectivePort > 0 {
-		port = a.effectivePort
+	if a.EffectivePort > 0 {
+		port = a.EffectivePort
 	}
 	go func() {
 		info, err := ipinfo.New(port).Probe(context.Background())

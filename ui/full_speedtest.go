@@ -32,8 +32,8 @@ func (a *App) runFullSpeedtest(group string, nodes []string, original string) {
 		}()
 
 		port := a.Settings.MixedPort
-		if a.effectivePort > 0 {
-			port = a.effectivePort
+		if a.EffectivePort > 0 {
+			port = a.EffectivePort
 		}
 		pu, _ := url.Parse("http://127.0.0.1:" + itoaLocal(port))
 		client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(pu)}, Timeout: 30 * time.Second}

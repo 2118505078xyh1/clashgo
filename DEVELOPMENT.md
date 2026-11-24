@@ -63,7 +63,7 @@ internal/winreg/        Windows 注册表（自启等）
 
 ## UI 信息架构（对齐 Clash Verge Rev）
 
-前端按 Clash Verge Rev（源码在 `D:/code/clash/clash-verge-rev`）的信息架构设计，
+前端按 Clash Verge Rev（Rust + Tauri，v2.6.0）的信息架构设计，
 详细页面结构见 `UI_REFERENCE.md`。要点：
 
 - 侧边栏为 8 项标准导航：首页 / 代理 / 订阅 / 连接 / 规则 / 日志 / 测试 / 设置，底部实时流量图
@@ -642,7 +642,7 @@ curl https://www.google.com
 
 ## 调试环境
 
-- Xray 二进制：`C:/Users/xyh/go/bin/xray186.exe`（1.8.6）、`xray.exe`（26.3.27）
+- Xray 二进制：本地 Go bin 目录下的 `xray186.exe`（1.8.6）、`xray.exe`（26.3.27）
 - 配置：`testserver/xray-config.json`（26）、`xray-config-old.json`（1.8.6）
 - 测试 UUID：`b831381d-6324-4d53-ad4f-8cda48b30811`
 - Reality 密钥对（本地测试）：private `uSYYR5g-...` / public `k0WQqsrh...`
@@ -661,7 +661,7 @@ curl https://www.google.com
 
 ## 其他内核如何实现 Hysteria2/TUIC 与 TUN（研究记录）
 
-> 研究来源：`C:/Users/xyh/go/pkg/mod/github.com/metacubex/mihomo@v1.19.34`
+> 研究来源：mihomo v1.19.34（Go 模块缓存中的 `github.com/metacubex/mihomo`）
 > 及 `sing-quic` / `sing-tun`（只读研究）。本项目零外部依赖，自研实现，
 > 本文记录差距本质与可借鉴的实现路径。
 

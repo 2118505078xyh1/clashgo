@@ -17,8 +17,8 @@ func (a *App) refreshGuard() {
 		return
 	}
 	server := fmt.Sprintf("127.0.0.1:%d", a.Settings.MixedPort)
-	if a.effectivePort > 0 {
-		server = fmt.Sprintf("127.0.0.1:%d", a.effectivePort)
+	if a.EffectivePort > 0 {
+		server = fmt.Sprintf("127.0.0.1:%d", a.EffectivePort)
 	}
 	applier := guard.ApplierFunc{
 		GetFn: func() (bool, string, string, error) {

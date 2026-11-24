@@ -8,6 +8,7 @@ import (
 
 	"clashgo/internal/config"
 	"clashgo/internal/enhance"
+	prof "clashgo/internal/profile"
 )
 
 // LastLogs holds script logs from the most recent Generate call.
@@ -18,6 +19,9 @@ var LastSteps []enhance.Step
 
 // Generate runs the enhance pipeline and writes the generated config.
 func Generate(profileBytes []byte, s *config.Settings, profile *config.PrfItem, db *config.ProfilesDB, runtimePath string) ([]byte, error) {
+	// 生效配置补国内直连兜底：订阅常常只有 MATCH,PROXY，节点失效后整机会断网。
+	// 已有 DIRECT 规则的用户配置不会被改动；存储的订阅文件也保持原样。
+	profileBytes = []byte(prof.EnsureDirectFallback(string(profileBytes)))
 	result, err := enhance.Execute(profileBytes, profile, db, s)
 	if err != nil {
 		return nil, fmt.Errorf("enhance: %w", err)

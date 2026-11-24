@@ -111,6 +111,51 @@ func (a *App) testAllDelays() {
 }
 
 // startDelayTest 并发测速一批代理组，并在 UI 线程统一写回结果。
+// updateHealthFromDelays 用已有的测速结果更新节点健康状态（不额外发起网络请求）。
+// 只有在确实测过、且全部节点都失败时才判定为“全挂”。
+func (a *App) updateHealthFromDelays(delays map[string]int) {
+	if len(delays) == 0 {
+		return
+	}
+	alive := 0
+	for _, v := range delays {
+		if v > 0 {
+			alive++
+		}
+	}
+	a.NodesAllDown = alive == 0
+	a.LastHealthAt = time.Now()
+}
+
+// checkNodesHealth 对所有代理组做一次测速体检。
+// 返回 true 表示至少有一个节点可用。
+func (a *App) checkNodesHealth() bool {
+	groups := a.groupNames()
+	if len(groups) == 0 {
+		a.NodesAllDown = false
+		a.LastHealthAt = time.Now()
+		return true
+	}
+	opts := controller.DelayOptions{
+		URL: a.Settings.LatencyTestURL, Timeout: a.Settings.LatencyTimeout,
+		Retries: 1, Concurrency: 4,
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	alive := 0
+	for _, g := range groups {
+		batch := a.currentClient().TestNodes(ctx, a.Proxies[g].All, opts)
+		for _, r := range batch {
+			if r.Delay > 0 {
+				alive++
+			}
+		}
+	}
+	a.NodesAllDown = alive == 0
+	a.LastHealthAt = time.Now()
+	return !a.NodesAllDown
+}
+
 func (a *App) startDelayTest(groups []string) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	a.delayMu.Lock()
@@ -189,6 +234,8 @@ func (a *App) startDelayTest(groups []string) {
 			for name, delay := range results {
 				a.Delays[name] = delay
 			}
+			// 测速结果同时用于节点健康告警（仅提示，不自动关闭系统代理）。
+			a.updateHealthFromDelays(results)
 			// 刷新后自动按延迟从小到大排序（延迟越小越好），
 			// 这样就不需要手动 ↑/↓ 排序按钮了。
 			a.ProxySortMode = 2

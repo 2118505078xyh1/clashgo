@@ -56,7 +56,7 @@ type App struct {
 	clientMu      sync.RWMutex // guards Client pointer across goroutines
 	PAC           *pac.Server
 	PortResolver  *portfallback.Resolver
-	effectivePort int // session-only port actually used (fallback may differ)
+	EffectivePort int // session-only port actually used (fallback may differ)
 
 	// currentClient returns a stable snapshot of the REST client.
 	currentClient func() *controller.Client
@@ -154,6 +154,11 @@ type App struct {
 
 	// delay results cache: group/node -> ms
 	Delays map[string]int
+
+	// NodesAllDown 记录最近一次体检中是否所有节点都不可用。
+	// 只用于界面告警，绝不自动关闭系统代理。
+	NodesAllDown  bool
+	LastHealthAt  time.Time
 
 	lastUp, lastDown int64
 	trafficSince     time.Time
@@ -280,7 +285,7 @@ func (a *App) applyCurrentProfile() error {
 		)
 	}
 	resolved, changed := a.PortResolver.Resolve(a.Settings.MixedPort)
-	a.effectivePort = resolved
+	a.EffectivePort = resolved
 	sessionSettings := *a.Settings
 	sessionSettings.MixedPort = resolved
 	if changed {
@@ -681,8 +686,8 @@ func (a *App) applySystemProxy() {
 		a.Guard = nil
 	}
 	port := a.Settings.MixedPort
-	if a.effectivePort > 0 {
-		port = a.effectivePort
+	if a.EffectivePort > 0 {
+		port = a.EffectivePort
 	}
 	server := fmt.Sprintf("127.0.0.1:%d", port)
 	setErr := sysproxy.Set(a.Settings.EnableSystemProxy, server, a.Settings.ProxyBypass)
@@ -694,6 +699,14 @@ func (a *App) applySystemProxy() {
 	// a target we failed to apply — a reference GUI's "never guard a failed target").
 	if setErr == nil && a.Settings.EnableSystemProxy {
 		a.refreshGuard()
+		// 打开系统代理后立即体检一次：节点全挂时首页会提示，
+		// 但绝不会自动关闭系统代理（避免在用户不知情时改变整机网络走向）。
+		go func() {
+			a.checkNodesHealth()
+			if a.win != nil {
+				a.win.Update(func() {})
+			}
+		}()
 	}
 }
 

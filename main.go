@@ -113,10 +113,16 @@ func main() {
 		geo = wingeo.Geometry{X: 80, Y: 60, Width: 1000, Height: 700}
 	}
 	// 清理逻辑：退出时清除系统代理，避免残留导致断网。
+	// 只在系统代理仍然指向本程序的混合端口时才清理，
+	// 避免把用户自己设置的其他代理一起关掉。
 	mygo.App.OnBeforeQuit(func(e *mygo.QuitEvent) {
 		bg.MarkClosed()
 		if clearProxyOnExit && a.Settings.EnableSystemProxy {
-			if err := sysproxy.Set(false, "", ""); err != nil {
+			port := a.Settings.MixedPort
+			if a.EffectivePort > 0 {
+				port = a.EffectivePort
+			}
+			if _, err := sysproxy.ClearIfPointsTo(port); err != nil {
 				log.Printf("clear system proxy on exit: %v", err)
 			}
 		}

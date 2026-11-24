@@ -67,8 +67,8 @@ func (a *App) pageSettings(c *ui.Context) {
 					a.applyPort()
 				}
 				ui.Button(c, a.trs("应用")).OnClick(a.applyPort)
-				if a.effectivePort > 0 && a.effectivePort != a.Settings.MixedPort {
-					text(c, "本次回退端口: "+itoaLocal(a.effectivePort)).
+				if a.EffectivePort > 0 && a.EffectivePort != a.Settings.MixedPort {
+					text(c, "本次回退端口: "+itoaLocal(a.EffectivePort)).
 						FontSize(11).TextColor(c.Theme().Warning)
 				}
 			})
@@ -452,8 +452,8 @@ func (a *App) pageSettings(c *ui.Context) {
 			}
 			if ui.Button(c, a.trs("复制代理命令")).Clicked() {
 				port := a.Settings.MixedPort
-				if a.effectivePort > 0 {
-					port = a.effectivePort
+				if a.EffectivePort > 0 {
+					port = a.EffectivePort
 				}
 				env := fmt.Sprintf("export http_proxy=http://127.0.0.1:%d\nexport https_proxy=http://127.0.0.1:%d\nexport all_proxy=socks5://127.0.0.1:%d", port, port, port)
 				mygo.Clipboard.WriteText(env)

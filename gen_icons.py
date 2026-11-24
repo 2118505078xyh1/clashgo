@@ -1,8 +1,10 @@
 from PIL import Image, ImageDraw
 import math, os
 
-OUT = r'D:/code/clash/clashgo/resources'
-UI_OUT = r'D:/code/clash/clashgo/ui'
+# 资源目录以脚本自身位置计算，避免写死本机绝对路径。
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUT = os.path.join(BASE_DIR, 'resources')
+UI_OUT = os.path.join(BASE_DIR, 'ui')
 
 BLUE1 = (79, 140, 255, 255)   # #4F8CFF
 BLUE2 = (123, 92, 255, 255)   # #7B5CFF
