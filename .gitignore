@@ -1,0 +1,10 @@
+# Build output
+clashgo.exe
+*.exe
+
+# Test binary
+*.test
+
+# Local data (if any)
+build/
+dist/
