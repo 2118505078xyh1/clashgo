@@ -4,44 +4,74 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-// proxyStatusCard 参考移动端设计的大状态卡：整卡可点开关系统代理，
-// 未开启时显示"点此开启代理"，开启后显示"已转发 X"。
+// proxyStatusCard 是首页最重要的一块：整卡可点开关系统代理。
+//
+// 视觉上有两种状态：
+//   - 关闭：中性表面 + 虚线感边框 + 灰色图标，明确"待启用"。
+//   - 开启：品牌渐变填充 + 发光图标 + 实时速率，一眼看出"正在工作"。
 func (a *App) proxyStatusCard(c *ui.Context) {
-	t := c.Theme()
 	on := a.Settings.EnableSystemProxy
 
-	// 卡片背景：开启用主色，未开启用次级表面色。
-	card := ui.Row(c).FillWidth().Height(88).Padding(18).Gap(16).
-		Radius(14).AlignItems(ui.Center).Cursor(ui.CursorPointer)
+	card := ui.Row(c).FillWidth().FillHeight().MinHeight(104).Padding(spaceLg).Gap(spaceMd).
+		Radius(radiusLg).AlignItems(ui.Center).Cursor(ui.CursorPointer)
 	if on {
-		card.Background(t.Accent)
+		card.LinearGradient(brandGradient()).
+			Shadow(0, 10, 28, -6, withAlpha(ui.Hex(brandSecondary), 0.55))
 	} else {
-		card.Background(t.Surface).Border(1, t.Border)
+		card.Background(ui.Hex(surfaceCard)).
+			Border(1, ui.Hex(borderStrong))
 	}
 
 	card.Children(func() {
-		// 状态图标
-		icon := iconBlock
+		// 状态图标：开启时用发光圆底，关闭时用中性底。
+		iconBox := ui.Box(c).Size(46, 46).Radius(radiusMd).Center()
 		if on {
-			icon = iconCheck
+			iconBox.Background(withAlpha(ui.Hex("#FFFFFF"), 0.18)).
+				Shadow(0, 4, 14, -2, withAlpha(ui.Hex("#FFFFFF"), 0.35))
+		} else {
+			iconBox.Background(ui.Hex(surfaceHover))
 		}
-		ui.Box(c).Size(44, 44).Radius(12).Center().
-			Background(withAlpha(t.Background, 0.16)).
-			Children(func() {
-				ui.Icon(c, icon).FontSize(24).TextColor(t.Background)
-			})
-		ui.Column(c).Gap(4).Children(func() {
+		iconBox.Children(func() {
+			icon := iconBlock
+			fg := ui.Hex(textTertiary)
 			if on {
-				text(c, "代理中").FontSize(17).Bold().TextColor(t.Background)
-				text(c, humanBytes(a.Down+a.Up)+" 已转发").FontSize(12).TextColor(withAlpha(t.Background, 0.85))
-			} else {
-				text(c, "未代理").FontSize(17).Bold().TextColor(t.Text)
-				text(c, "点此开启代理").FontSize(12).TextColor(t.TextMuted)
+				icon = iconCheck
+				fg = ui.Hex("#FFFFFF")
 			}
-		}).Grow(1)
-		// 右侧状态小字
+			ui.Icon(c, icon).FontSize(24).TextColor(fg)
+		})
+
+		ui.Column(c).Gap(3).Grow(1).Children(func() {
+			if on {
+				text(c, "代理已开启").FontSize(18).Bold().TextColor(ui.Hex("#FFFFFF"))
+				ui.Row(c).Gap(8).Children(func() {
+					text(c, humanBytes(a.Down+a.Up)+" 已转发").FontSize(11).TextColor(withAlpha(ui.Hex("#FFFFFF"), 0.85))
+					badge(c, modeLabel(a.Settings.Mode), ui.Hex("#FFFFFF"), withAlpha(ui.Hex("#000000"), 0.18))
+				})
+			} else {
+				text(c, "代理未开启").FontSize(18).Bold()
+				text(c, "点击开启系统代理").FontSize(11).TextColor(ui.Hex(textTertiary))
+			}
+		})
+
+		// 右侧：开启时显示实时速率，关闭时显示引导箭头。
 		if on {
-			text(c, modeLabel(a.Settings.Mode)).FontSize(12).TextColor(withAlpha(t.Background, 0.85))
+			ui.Column(c).Gap(1).AlignItems(ui.End).Children(func() {
+				ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+					text(c, "↓").FontSize(11).TextColor(withAlpha(ui.Hex("#FFFFFF"), 0.8))
+					text(c, humanRate(a.DownRate)).FontSize(12).Bold().TextColor(ui.Hex("#FFFFFF"))
+				})
+				ui.Row(c).Gap(5).AlignItems(ui.Center).Children(func() {
+					text(c, "↑").FontSize(11).TextColor(withAlpha(ui.Hex("#FFFFFF"), 0.8))
+					text(c, humanRate(a.UpRate)).FontSize(12).Bold().TextColor(ui.Hex("#FFFFFF"))
+				})
+			})
+		} else {
+			ui.Box(c).Size(30, 30).Radius(radiusFull).Center().
+				Background(ui.Hex(surfaceHover)).
+				Children(func() {
+					ui.Icon(c, iconChevronRight).FontSize(16).TextColor(ui.Hex(textTertiary))
+				})
 		}
 	})
 	if card.Clicked() {

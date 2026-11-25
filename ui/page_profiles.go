@@ -10,25 +10,15 @@ import (
 )
 
 func (a *App) pageProfiles(c *ui.Context) {
-	ui.Column(c).Fill().Padding(20).Gap(12).Children(func() {
-		a.pageHeader(c, a.tr("profiles"), func() {
-			if ui.PrimaryButton(c, a.tr("import_sub")).Clicked() {
-				a.openSubscriptionDialog()
-			}
+	ui.Column(c).Fill().Padding(spaceLg).Gap(spaceMd).Children(func() {
+		// 顶部一行：导入订阅 + 更新全部。
+		ui.Row(c).Gap(spaceSm).AlignItems(ui.Center).Children(func() {
+			primaryButton(c, a.tr("import_sub"), func() { a.openSubscriptionDialog() })
+			pillButton(c, "更新全部", "重新下载所有远程订阅", func() { a.refreshAllProfiles() })
+			ui.Spacer(c).Grow(1)
 		})
 
-		card(c, func() {
-			ui.Row(c).Gap(8).Wrap().Children(func() {
-				if ui.Button(c, "更新全部").Clicked() {
-					a.refreshAllProfiles()
-				}
-				if ui.Button(c, "新建节点池").Clicked() {
-					a.CompositionOpen = true
-				}
-			})
-		})
-
-		ui.Scroll(c).Grow(1).Gap(12).Children(func() {
+		ui.Scroll(c).Grow(1).Gap(spaceSm).Children(func() {
 			for _, item := range a.Profiles.DB.Items {
 				it := item
 				selected := a.Profiles.DB.Current == it.UID

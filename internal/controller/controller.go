@@ -79,10 +79,44 @@ func (c *Client) do(method, path string, body, out any) error {
 }
 
 // Stats 返回内核累计流量（上传/下载/活跃连接数）。
+// Stats returns the cumulative traffic counters.
+//
+// mihomo exposes the totals on /connections (downloadTotal / uploadTotal),
+// not on a separate /stats endpoint — the old /stats path returns 404 and the
+// counters stayed at zero.
 func (c *Client) Stats() (map[string]any, error) {
 	var out map[string]any
-	err := c.do(http.MethodGet, "/stats", nil, &out)
-	return out, err
+	err := c.do(http.MethodGet, "/connections", nil, &out)
+	if err != nil {
+		return nil, err
+	}
+	// 统一成 upload / download 两个键，兼容自研内核的命名。
+	stats := map[string]any{}
+	if v, ok := out["uploadTotal"]; ok {
+		stats["upload"] = v
+	}
+	if v, ok := out["downloadTotal"]; ok {
+		stats["download"] = v
+	}
+	return stats, nil
+}
+
+// TrafficTotal 返回内核当前的累计上传/下载字节数。
+//
+// 直接读绝对值，不依赖 WebSocket：/traffic 的推送在桌面客户端里不可靠
+// （连接能建立但收不到帧），而累计值始终准确，差分就能算出速率。
+func (c *Client) TrafficTotal() (up, down int64, err error) {
+	stats, err := c.Stats()
+	if err != nil {
+		return 0, 0, err
+	}
+	if v, ok := stats["upload"].(float64); ok {
+		up = int64(v)
+	}
+	if v, ok := stats["download"].(float64); ok {
+		down = int64(v)
+	}
+	return up, down, nil
 }
 
 // Version returns core version info.

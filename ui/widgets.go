@@ -8,40 +8,7 @@ import (
 )
 
 // text is kept as a thin wrapper so every label goes through one place.
-func text(c *ui.Context, s string) ui.Element { return ui.Text(c, s) }
-
-// Three levels of elevation used by cards, popovers and dialogs.
-func shadowLevel(level int) ui.Color {
-	switch level {
-	case 1:
-		return withAlpha(ui.Hex("#000000"), 0.22)
-	case 3:
-		return withAlpha(ui.Hex("#000000"), 0.45)
-	default:
-		return withAlpha(ui.Hex("#000000"), 0.32)
-	}
-}
-
-// card builds an elevated panel with consistent padding and rounded corners.
-func card(c *ui.Context, fn func()) ui.Element {
-	t := c.Theme()
-	return ui.Column(c).Padding(18).Gap(12).
-		Background(t.Surface).
-		Border(1, t.Border).
-		Radius(partyRadiusLarge).
-		Shadow(0, 4, 16, -2, shadowLevel(2)).
-		Children(fn)
-}
-
-// sectionTitle builds a bold title with a subtle subtitle.
-func sectionTitle(c *ui.Context, title, subtitle string) {
-	ui.Row(c).Gap(10).AlignItems(ui.Baseline).Children(func() {
-		text(c, title).FontSize(16).Bold()
-		if subtitle != "" {
-			text(c, subtitle).FontSize(12).TextColor(c.Theme().TextMuted)
-		}
-	})
-}
+// （实现在 design.go —— 新组件库）
 
 // pageHeader is the shared page heading: an 18px title, at most one or two
 // actions on the right, and the always-available help button.
@@ -53,44 +20,17 @@ func (a *App) minimizeToTray() {
 	a.win.Hide()
 }
 
-func (a *App) pageHeader(c *ui.Context, title string, extra func()) {
-	ui.Row(c).AlignItems(ui.Center).Gap(8).Padding(0, 0, 4, 0).Children(func() {
-		text(c, title).FontSize(18).Bold().Grow(1)
-		if extra != nil {
-			extra()
-		}
-		if ui.Button(c, "最小化到托盘").Tooltip("隐藏窗口；双击托盘图标可恢复").Clicked() {
-			a.minimizeToTray()
-		}
-		if ui.Button(c, "?").Tooltip("使用说明").Width(30).Clicked() {
-			a.HelpOpen = true
-		}
-	})
-}
-
-// helpOverlay is the "使用说明" dialog opened from any page header.
-func (a *App) helpOverlay(c *ui.Context) {
-	ui.Modal(c, &a.HelpOpen, func() {
-		card(c, func() {
-			text(c, "使用说明").FontSize(18).Bold()
-			ui.Divider(c).Padding(2, 0)
-			for _, line := range []string{
-				"【3 步上手】",
-				"1. 导入订阅：进入「配置」页 →「导入订阅」→ 粘贴订阅地址，导入后自动激活。",
-				"2. 选择节点：进入「代理」页 → 点击代理组展开 → 在节点上点「选择」。（也可直接用自动选择）",
-				"3. 开启代理：点首页顶部大卡片，或左侧栏「系统代理」开关。开启后即可科学上网。",
-				"",
-				"【代理模式】规则（推荐）：国内直连、国外走代理；全局：全部走代理，费流量、国内变慢，仅排错时临时用。想不代理就关「系统代理」。",
-				"【TUN 模式】虚拟网卡，接管所有程序的流量（含不支持系统代理的软件），需管理员权限；普通用户不用开。",
-				"【托盘】点右上角「最小化到托盘」可隐藏窗口；双击托盘图标恢复，右键可开关代理、显示窗口、退出。右上角 X 会关闭程序。",
-				"【更多】规则/日志/媒体解锁/DNS/请求记录在「设置 → 工具与诊断」。",
-			} {
-				text(c, line).FontSize(12).TextColor(c.Theme().Text)
-			}
-			if ui.PrimaryButton(c, "知道了").Clicked() {
-				a.HelpOpen = false
-			}
-		}).Width(500).Selectable()
+// pageHeader 是页面顶部的操作栏。
+//
+// 不再显示页面标题：侧栏已经高亮了当前页面，标题是重复信息。
+// 这里只放该页特有的操作按钮。
+func (a *App) pageHeader(c *ui.Context, extra func()) {
+	if extra == nil {
+		return
+	}
+	ui.Row(c).AlignItems(ui.Center).Gap(spaceSm).Children(func() {
+		ui.Spacer(c).Grow(1)
+		extra()
 	})
 }
 
@@ -101,25 +41,33 @@ func (a *App) helpOverlay(c *ui.Context) {
 // 选中项高亮。对应 Verge 的 LayoutItem。
 func navRow(c *ui.Context, icon *ui.SVG, label string, active bool, onClick func()) {
 	t := c.Theme()
-	e := ui.Row(c).Gap(14).AlignItems(ui.Center).Padding(11, 14).Radius(10)
+	// 选中态：强调色底 + 左侧竖条 + 强调色文字；未选中时靠悬停给反馈。
+	row := ui.Row(c).Gap(11).AlignItems(ui.Center).Padding(10, 12).Radius(radiusMd)
 	if active {
-		e.Background(withAlpha(t.Accent, 0.18))
-	} else if e.Hovered() {
-		e.Background(withAlpha(t.Accent, 0.08))
+		row.Background(withAlpha(t.Accent, 0.16))
+	} else if row.Hovered() {
+		row.Background(ui.Hex(surfaceHover))
 	}
-	e.Children(func() {
-		ico := t.TextMuted
-		labelColor := t.Text
+	row.Children(func() {
+		// 左侧指示条：选中时才占位，避免文字跳动。
+		bar := ui.Box(c).Width(3).Height(18).Radius(radiusFull)
 		if active {
-			ico, labelColor = t.Accent, t.Accent
+			bar.Background(t.Accent)
+		} else {
+			bar.Background(ui.Hex("#00000000"))
 		}
-		ui.Box(c).Size(22, 22).Center().Children(func() {
-			ui.Icon(c, icon).FontSize(20).TextColor(ico)
+		ico := ui.Hex(textTertiary)
+		labelColor := ui.Hex(textSecondary)
+		if active {
+			ico, labelColor = t.Accent, t.Text
+		}
+		ui.Box(c).Size(20, 20).Center().Children(func() {
+			ui.Icon(c, icon).FontSize(19).TextColor(ico)
 		})
-		text(c, label).FontSize(14).Bold().TextColor(labelColor).Grow(1)
+		text(c, label).FontSize(13).Bold().TextColor(labelColor).Grow(1)
 	})
-	e.Cursor(ui.CursorPointer)
-	if e.Clicked() {
+	row.Cursor(ui.CursorPointer)
+	if row.Clicked() {
 		onClick()
 	}
 }

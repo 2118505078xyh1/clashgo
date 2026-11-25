@@ -57,11 +57,13 @@ func Names() []string {
 	}
 }
 
-// PendingItems returns the initial list of all-pending items.
+// PendingItems returns the initial list of all items, not yet checked.
+//
+// 初始状态留空（界面上显示为 "-"）：只有真正开始检测时才显示“检测中”。
 func PendingItems() []Item {
 	out := make([]Item, 0, len(Names()))
 	for _, name := range Names() {
-		out = append(out, Item{Name: name, Status: "Pending"})
+		out = append(out, Item{Name: name, Status: ""})
 	}
 	return out
 }
@@ -73,7 +75,7 @@ const bahamutUA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 func (c *Checker) Check(ctx context.Context, name string) Item {
 	ctx, cancel := context.WithTimeout(ctx, c.Timeout)
 	defer cancel()
-	item := Item{Name: name, Status: "Failed"}
+	item := Item{Name: name, Status: "检测中"}
 	var status, region string
 	var err error
 	switch name {
@@ -107,7 +109,8 @@ func (c *Checker) Check(ctx context.Context, name string) Item {
 		err = fmt.Errorf("unknown check: %s", name)
 	}
 	if err != nil {
-		item.Status = "Failed (" + err.Error() + ")"
+		// 检测失败对用户来说就是“不可用”，不暴露 Failed 这种技术词。
+		item.Status = "No"
 	} else {
 		item.Status = status
 	}

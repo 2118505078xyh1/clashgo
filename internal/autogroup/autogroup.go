@@ -88,3 +88,22 @@ func Build(nodes []string) []Group {
 func GroupName(g Group) string {
 	return "🌍 " + g.Name + " " + strings.ToUpper(g.Code)
 }
+
+// RegionOf 返回节点名对应的地区名（如「香港」），无法识别时返回空串。
+//
+// 纯名称匹配，不发网络请求。用于界面上的轻量地区标签。
+func RegionOf(node string) string {
+	if node == "" || excludeRe.MatchString(node) {
+		return ""
+	}
+	for _, rp := range RegionPatterns {
+		re, err := regexp.Compile(rp.Pattern)
+		if err != nil {
+			continue
+		}
+		if re.MatchString(node) {
+			return rp.Name
+		}
+	}
+	return ""
+}

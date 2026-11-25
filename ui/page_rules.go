@@ -41,7 +41,7 @@ func (a *App) pageRules(c *ui.Context) {
 		})
 	}
 
-	ui.Column(c).Fill().Padding(24).Gap(12).Children(func() {
+	ui.Column(c).Fill().Padding(spaceLg).Gap(spaceMd).Children(func() {
 		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 			text(c, a.tr("rules")).FontSize(24).Bold().Grow(1)
 			ui.TextInput(c, &a.Search).Placeholder("搜索规则…").Width(200)
@@ -63,18 +63,18 @@ func (a *App) pageRules(c *ui.Context) {
 			payload, _ := r["payload"].(string)
 			proxy, _ := r["proxy"].(string)
 			key := fmt.Sprint(typeName, "|", payload)
-			ui.Row(c).Gap(12).Padding(8, 12).Children(func() {
-				if ui.Button(c, "→").Width(30).Tooltip("查看该规则的连接").Clicked() {
+			ui.Row(c).Gap(spaceMd).Padding(6, spaceMd).Children(func() {
+				if ui.Button(c, "→").Width(28).Tooltip("查看该规则的匹配日志").Clicked() {
 					a.RuleJumpFilter = payload
 					a.Search = ""
-					a.router.Push("/connections")
+					a.router.Push("/logs")
 				}
 				ui.Badge(c, typeName).Width(110)
 				text(c, payload).Grow(1)
 				if a.RuleSortByHits && hits[key] > 0 {
-					text(c, humanBytes(hits[key])).Width(80).TextColor(c.Theme().TextMuted)
+					text(c, humanBytes(hits[key])).Width(80).TextColor(ui.Hex(textTertiary))
 				}
-				text(c, proxy).TextColor(c.Theme().Accent).Width(160)
+				text(c, proxy).TextColor(ui.Hex(brandPrimary)).Width(160)
 			})
 		}).Grow(1).Background(c.Theme().Surface).Radius(10)
 	})

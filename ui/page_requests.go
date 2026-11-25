@@ -24,7 +24,7 @@ func (a *App) pageRequests(c *ui.Context) {
 	// Newest first.
 	sort.Slice(filtered, func(i, j int) bool { return filtered[i].Start > filtered[j].Start })
 
-	ui.Column(c).Fill().Padding(24).Gap(12).Children(func() {
+	ui.Column(c).Fill().Padding(spaceLg).Gap(spaceMd).Children(func() {
 		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 			text(c, "请求记录").FontSize(24).Bold().Grow(1)
 			ui.TextInput(c, &a.Search).Placeholder("搜索域名/进程…").Width(220)

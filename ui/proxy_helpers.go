@@ -196,7 +196,9 @@ func (a *App) startDelayTest(groups []string) {
 
 	opts := controller.DelayOptions{
 		URL: a.Settings.LatencyTestURL, Timeout: a.Settings.LatencyTimeout,
-		Retries: 2, Concurrency: 4,
+		// 重试一次就够：第一次失败基本就是节点不通，再试一遍只是拖慢。
+		// 节点多的时候这个差别很明显（19 个节点，5 秒超时）。
+		Retries: 1, Concurrency: 8,
 	}
 	var mu sync.Mutex
 	results := map[string]int{}

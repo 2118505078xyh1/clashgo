@@ -54,7 +54,7 @@ func (a *App) pageLogs(c *ui.Context) {
 		}
 	}
 
-	ui.Column(c).Fill().Padding(20).Gap(12).Children(func() {
+	ui.Column(c).Fill().Padding(spaceLg).Gap(spaceMd).Children(func() {
 		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 			text(c, a.tr("logs")).FontSize(22).Bold().Grow(1)
 			// 暂停/继续（对齐 Clash Verge）

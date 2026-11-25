@@ -55,6 +55,20 @@ func New(mixedPort int) *Prober {
 	}
 }
 
+// NewDirect creates a prober that goes straight out, without the proxy.
+//
+// 系统代理关闭时，界面上的“出口 IP”应该反映真实直连出口；
+// 一直走代理探测会让用户以为代理没关掉。
+func NewDirect() *Prober {
+	return &Prober{
+		proxyURL: "",
+		client: &http.Client{
+			Transport: &http.Transport{Proxy: nil},
+			Timeout:   10 * time.Second,
+		},
+	}
+}
+
 // Invalidate clears the cache (call after switching nodes).
 func (p *Prober) Invalidate() {
 	p.mu.Lock()

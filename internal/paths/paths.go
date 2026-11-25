@@ -29,8 +29,8 @@ func Init(appName string) error {
 	}
 	Home = filepath.Join(base, appName)
 
-	// Portable 模式：若 exe 同目录存在 data 目录，则用它作为数据根，
-	// 让绿色版把所有配置/订阅放在程序目录下（D:\clashgo\data）。
+	// 便携模式：若 exe 同目录存在 data 目录，则用它作为数据根，
+	// 让绿色版把所有配置/订阅放在程序目录下（例如 <安装目录>/data）。
 	if exe, e := os.Executable(); e == nil {
 		localData := filepath.Join(filepath.Dir(exe), "data")
 		if st, e2 := os.Stat(localData); e2 == nil && st.IsDir() {

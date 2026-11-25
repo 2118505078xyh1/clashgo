@@ -32,8 +32,8 @@ func (a *App) pageConnections(c *ui.Context) {
 	}
 	sort.Slice(conns, func(i, j int) bool { return conns[i].Start > conns[j].Start })
 
-	ui.Column(c).Fill().Padding(20).Gap(12).Children(func() {
-		a.pageHeader(c, a.tr("connections"), nil)
+	ui.Column(c).Fill().Padding(spaceLg).Gap(spaceMd).Children(func() {
+		a.pageHeader(c, nil)
 		card(c, func() {
 			ui.Row(c).Gap(10).AlignItems(ui.Center).Wrap().Children(func() {
 				if jumpFilter != "" {

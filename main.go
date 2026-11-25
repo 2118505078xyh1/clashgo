@@ -129,6 +129,13 @@ func main() {
 		if a.Guard != nil {
 			a.Guard.Stop()
 		}
+		// 关闭内核：mihomo 后端是子进程，不结束就会变成孤儿进程，
+		// 继续占用 7897/9097 端口，下次启动时新内核起不来。
+		if a.Kernel != nil {
+			if err := a.Kernel.Stop(); err != nil {
+				log.Printf("stop kernel: %v", err)
+			}
+		}
 	})
 
 	trayIcon := loadTrayIcon()
@@ -150,7 +157,12 @@ func main() {
 			Height:    geo.Height,
 			MinWidth:  820,
 			MinHeight: 600,
-			Content:   ui.View(a.View),
+			// 隐藏系统标题栏，让页眉与内容融为一体；
+			// 最小化/最大化/关闭按钮仍然保留在右上角。
+			TitleBarStyle: mygo.TitleBarHidden,
+			// 窗口底色与界面一致，避免启动时闪一下纯黑。
+			BackgroundColor: "#0B0D14",
+			Content:         ui.View(a.View),
 		})
 		winMu.Lock()
 		win = w

@@ -15,7 +15,6 @@ import (
 
 	"clashgo/internal/autogroup"
 	"clashgo/internal/backup"
-	"clashgo/internal/batch"
 	"clashgo/internal/config"
 	"clashgo/internal/controller"
 	"clashgo/internal/dnsq"
@@ -26,7 +25,6 @@ import (
 	"clashgo/internal/kernel"
 	"clashgo/internal/lastgood"
 	"clashgo/internal/lightweight"
-	"clashgo/internal/nodeprobe"
 	"clashgo/internal/notice"
 	"clashgo/internal/pac"
 	"clashgo/internal/paths"
@@ -34,7 +32,6 @@ import (
 	"clashgo/internal/profile"
 	"clashgo/internal/runtime"
 	"clashgo/internal/snapshot"
-	"clashgo/internal/speedtest"
 	"clashgo/internal/sysproxy"
 	"clashgo/internal/unlock"
 	"clashgo/internal/updater"
@@ -82,7 +79,6 @@ type App struct {
 	LatencyTesting         bool
 	Message                string
 	DialogOpen             bool
-	HelpOpen               bool // 使用说明 dialog
 	DialogTitle            string
 	DialogBody             string
 	Notices                *notice.Manager
@@ -97,12 +93,8 @@ type App struct {
 	AutoGroupsOpen         bool
 	Requests               []config.ConnectionView
 	ActiveReqIDs           map[string]int // id -> index in Requests
-	NodeIPResults          map[string]nodeprobe.Result
-	NodeProbeBusy          bool
 	PipelineSteps          []enhance.Step
 	PipelineOpen           bool
-	SpeedResults           map[string]speedtest.Result
-	SpeedTestBusy          bool
 	SpeedCancel            context.CancelFunc
 	SpeedMu                sync.Mutex
 	WebAPIServer           *webapi.Server
@@ -158,8 +150,8 @@ type App struct {
 
 	// NodesAllDown 记录最近一次体检中是否所有节点都不可用。
 	// 只用于界面告警，绝不自动关闭系统代理。
-	NodesAllDown  bool
-	LastHealthAt  time.Time
+	NodesAllDown bool
+	LastHealthAt time.Time
 
 	lastUp, lastDown int64
 	trafficSince     time.Time
@@ -227,8 +219,6 @@ func newAppWithOptions(skipCore bool) (*App, error) {
 	a.UnlockItems = unlock.PendingItems()
 	a.busyNodes = map[string]bool{}
 	a.ActiveReqIDs = map[string]int{}
-	a.NodeIPResults = map[string]nodeprobe.Result{}
-	a.SpeedResults = map[string]speedtest.Result{}
 	a.Lightweight = lightweight.New(s.LightweightMinutes,
 		func() { a.Kernel.Suspend() },
 		func() { a.Kernel.Resume() },
@@ -381,41 +371,6 @@ func (a *App) streamLoop() {
 
 	client := a.currentClient
 
-	// Traffic arrives at high frequency; accumulate into a local counter and
-	// flush to the UI at most every 100ms to avoid repaint storms.
-	trafficAcc := struct {
-		sync.Mutex
-		up, down int64
-	}{}
-	trafficCoalescer := batch.New(100*time.Millisecond, func(any) {
-		trafficAcc.Lock()
-		up, down := trafficAcc.up, trafficAcc.down
-		trafficAcc.up, trafficAcc.down = 0, 0
-		trafficAcc.Unlock()
-		if up == 0 && down == 0 {
-			return
-		}
-		// 累计值由 REST /stats 读取绝对值；这里只累加速率增量。
-		a.win.Update(func() {
-			a.lastUp += up
-			a.lastDown += down
-		})
-	})
-	defer trafficCoalescer.Stop()
-
-	go controller.ReconnectStream(ctx, "traffic", func(c context.Context) error {
-		return client().StreamTraffic(c, func(s controller.TrafficSample) {
-			if (s.Up > 0 || s.Down > 0) && a.Lightweight != nil {
-				a.Lightweight.Activity()
-			}
-			// 隐藏到托盘时也要累计流量，否则"已转发"和实时流量在恢复后断层。
-			trafficAcc.Lock()
-			trafficAcc.up += s.Up
-			trafficAcc.down += s.Down
-			trafficAcc.Unlock()
-			trafficCoalescer.Submit(nil)
-		})
-	})
 	go controller.ReconnectStream(ctx, "logs", func(c context.Context) error {
 		return client().StreamLogs(c, func(f controller.LogFrame) {
 			if a.LogPaused {
@@ -485,42 +440,51 @@ func (a *App) pollLoop() {
 		proxies, _ := cli.Proxies()
 		rules, _ := cli.Rules()
 		version, _ := cli.Version()
-		// 累计流量从内核 REST 读取绝对值（WS 增量在重启后会丢失历史）。
-		stats, _ := cli.Stats()
+		// 累计流量从内核读取绝对值，速率由两次采样的差分算出。
+		//
+		// 不再依赖 /traffic 的 WebSocket：那条连接能建立但收不到帧，
+		// 导致速率和曲线永远是 0。绝对值可靠，差分同样可靠。
+		upTotal, downTotal, _ := cli.TrafficTotal()
 
 		a.win.Update(func() {
 			a.Proxies = proxies
 			a.Rules = rules
-			if stats != nil {
-				if up, ok := stats["upload"].(float64); ok {
-					a.Up = int64(up)
-				}
-				if down, ok := stats["download"].(float64); ok {
-					a.Down = int64(down)
-				}
-			}
+			a.Up = upTotal
+			a.Down = downTotal
 			// Connections come from the WebSocket stream (no REST poll needed).
 			if version != nil {
 				a.Version = version
 			}
-			// Traffic websocket accumulates lastUp/lastDown; turn 700ms worth
-			// into a per-second rate estimate.
-			if a.trafficSince.IsZero() {
-				a.trafficSince = time.Now()
-			}
-			elapsed := time.Since(a.trafficSince).Seconds()
-			if elapsed >= 0.5 {
-				a.DownRate = int64(float64(a.lastDown) / elapsed)
-				a.UpRate = int64(float64(a.lastUp) / elapsed)
-				a.lastUp, a.lastDown = 0, 0
-				a.trafficSince = time.Now()
-				const maxHistory = 90
-				a.upHistory = append(a.upHistory, float64(a.UpRate))
-				a.downHistory = append(a.downHistory, float64(a.DownRate))
-				if len(a.upHistory) > maxHistory {
-					a.upHistory = a.upHistory[1:]
-					a.downHistory = a.downHistory[1:]
+			// 速率 = 本次累计增量 / 距上次采样的秒数。
+			now := time.Now()
+			if !a.trafficSince.IsZero() {
+				elapsed := now.Sub(a.trafficSince).Seconds()
+				if elapsed > 0 {
+					if upTotal >= a.lastUp {
+						a.UpRate = int64(float64(upTotal-a.lastUp) / elapsed)
+					} else {
+						a.UpRate = 0 // 内核重启，计数归零
+					}
+					if downTotal >= a.lastDown {
+						a.DownRate = int64(float64(downTotal-a.lastDown) / elapsed)
+					} else {
+						a.DownRate = 0
+					}
 				}
+			}
+			a.lastUp, a.lastDown = upTotal, downTotal
+			a.trafficSince = now
+			if a.UpRate > 0 || a.DownRate > 0 {
+				logf("rate: up=%d B/s down=%d B/s (total up=%d down=%d)", a.UpRate, a.DownRate, upTotal, downTotal)
+			}
+
+			// 历史曲线：每秒一个采样点。
+			const maxHistory = 90
+			a.upHistory = append(a.upHistory, float64(a.UpRate))
+			a.downHistory = append(a.downHistory, float64(a.DownRate))
+			if len(a.upHistory) > maxHistory {
+				a.upHistory = a.upHistory[1:]
+				a.downHistory = a.downHistory[1:]
 			}
 		})
 	}
@@ -534,52 +498,56 @@ func (a *App) View(c *ui.Context) {
 
 	// One selectable scope for all static text on every page. Text inside
 	// controls (buttons, inputs, editors) keeps its own interaction.
-	ui.Row(c).Fill().AlignItems(ui.Stretch).Selectable().Children(func() {
-		a.sidebar(c)
-		ui.Column(c).Grow(1).Children(func() {
-			a.router.View(c, func(r *ui.Route) {
-				switch {
-				case r.Match("/home"):
-					r.Title(a.tr("home"))
-					a.pageHome(c)
-				case r.Match("/proxies"):
-					r.Title(a.tr("proxies"))
-					a.pageProxies(c)
-				case r.Match("/profiles"):
-					r.Title("订阅")
-					a.pageProfiles(c)
-				case r.Match("/rules"):
-					r.Title("规则")
-					a.pageRules(c)
-				case r.Match("/connections"):
-					r.Title("连接")
-					a.pageConnections(c)
-				case r.Match("/logs"):
-					r.Title("日志")
-					a.pageLogs(c)
-				case r.Match("/unlock"):
-					r.Title("测试")
-					a.pageUnlock(c)
-				case r.Match("/dns"):
-					r.Title("DNS 查询")
-					a.pageDNS(c)
-				case r.Match("/requests"):
-					r.Title("请求记录")
-					a.pageRequests(c)
-				case r.Match("/settings"):
-					r.Title("设置")
-					a.pageSettings(c)
-				default:
-					r.Title("首页")
-					a.pageHome(c)
-				}
+	//
+	// 根容器要显式填背景色：不填的话内容区是透明的，会透出窗口底色（纯黑），
+	// 与侧栏的深蓝黑对比很生硬。
+	ui.Row(c).Fill().AlignItems(ui.Stretch).Selectable().
+		Background(ui.Hex(surfaceBase)).
+		Children(func() {
+			a.sidebar(c)
+			ui.Column(c).Grow(1).Background(ui.Hex(surfaceBase)).Children(func() {
+				// 顶部可拖动条：隐藏系统标题栏后，靠它拖动窗口。
+				// 右侧留空，不遮挡右上角的窗口按钮。
+				ui.Row(c).FillWidth().Height(10).DragWindow()
+				a.router.View(c, func(r *ui.Route) {
+					switch {
+					case r.Match("/home"):
+						r.Title(a.tr("home"))
+						a.pageHome(c)
+					case r.Match("/proxies"):
+						r.Title(a.tr("proxies"))
+						a.pageProxies(c)
+					case r.Match("/profiles"):
+						r.Title("订阅")
+						a.pageProfiles(c)
+					case r.Match("/rules"):
+						r.Title("规则")
+						a.pageRules(c)
+					case r.Match("/logs"):
+						r.Title("日志")
+						a.pageLogs(c)
+					case r.Match("/unlock"):
+						r.Title("测试")
+						a.pageUnlock(c)
+					case r.Match("/dns"):
+						r.Title("DNS 查询")
+						a.pageDNS(c)
+					case r.Match("/requests"):
+						r.Title("请求记录")
+						a.pageRequests(c)
+					case r.Match("/settings"):
+						r.Title("设置")
+						a.pageSettings(c)
+					default:
+						r.Title("首页")
+						a.pageHome(c)
+					}
+				})
 			})
 		})
-	})
 
 	// Overlay dialogs.
 	a.overlays(c)
-	a.helpOverlay(c)
 }
 
 func (a *App) tr(id string) string {
@@ -593,21 +561,26 @@ func (a *App) trs(s string) string {
 }
 
 func (a *App) sidebar(c *ui.Context) {
-	t := c.Theme()
 	page := a.router.Path()
 	active := func(p string) bool { return page == p }
 
-	ui.Column(c).Width(220).Padding(12, 10).Gap(6).Background(t.Background).Children(func() {
-		// 顶部：Logo + 应用名（Clash Verge 风格）
-		ui.Row(c).Gap(8).AlignItems(ui.Center).Padding(4, 6, 14, 6).Children(func() {
-			ui.Image(c, logoBitmap).Size(28, 28)
-			ui.Column(c).Gap(0).Children(func() {
-				text(c, "ClashGo").FontSize(15).Bold()
-				text(c, "v"+version.App).FontSize(10).TextColor(t.TextMuted)
+	// 侧栏底色比内容区略深，形成"从属"关系；品牌区用渐变勾边。
+	ui.Column(c).Width(232).Padding(14, 12).Gap(4).Background(ui.Hex(surfaceRaised)).Children(func() {
+		// 品牌区：logo + 名称 + 版本。
+		// 直接用 logo 图片（带透明通道），不再垫一层渐变方块——
+		// 叠在一起会看着像两个图标。
+		ui.Row(c).Gap(10).AlignItems(ui.Center).Padding(4, 6, 14, 6).
+			DragWindow().
+			Children(func() {
+				ui.Image(c, logoBitmap).Size(26, 26)
+				ui.Column(c).Gap(0).Grow(1).Children(func() {
+					text(c, "ClashGo").FontSize(15).Bold()
+					text(c, "v"+version.App).FontSize(10).TextColor(ui.Hex(textTertiary))
+				})
 			})
-		})
 
-		// 8 项标准导航（对齐 Clash Verge：首页/代理/订阅/连接/规则/日志/测试/设置）
+		// 导航项：只保留用户日常会用到的页面。
+		// 规则与日志属于内核调试信息，普通用户不需要，放在「设置 → 高级工具」里。
 		for _, nav := range []struct {
 			path, label string
 			icon        *ui.SVG
@@ -615,9 +588,6 @@ func (a *App) sidebar(c *ui.Context) {
 			{"/home", "首页", iconHome},
 			{"/proxies", "代理", iconProxy},
 			{"/profiles", "订阅", iconProfile},
-			{"/connections", "连接", iconConnections},
-			{"/rules", "规则", iconRules},
-			{"/logs", "日志", iconLogs},
 			{"/unlock", "测试", iconUnlock},
 			{"/settings", "设置", iconSettings},
 		} {
@@ -628,21 +598,6 @@ func (a *App) sidebar(c *ui.Context) {
 		}
 
 		ui.Spacer(c).Grow(1)
-
-		// 底部实时流量（Clash Verge 的 LayoutTraffic）
-		ui.Column(c).Gap(4).Padding(10).Radius(10).Background(t.Surface).Children(func() {
-			ui.Box(c).Height(46).FillWidth().Radius(6).Draw(func(p *ui.Painter, r ui.Rect) {
-				drawTrafficChart(p, r, a.upHistory, a.downHistory, t)
-			})
-			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-				text(c, "↑").FontSize(11).TextColor(t.Accent)
-				text(c, humanRate(a.UpRate)).FontSize(11).TextColor(t.Accent).Grow(1)
-			})
-			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-				text(c, "↓").FontSize(11).TextColor(t.Success)
-				text(c, humanRate(a.DownRate)).FontSize(11).TextColor(t.Success).Grow(1)
-			})
-		})
 	})
 }
 
@@ -685,6 +640,10 @@ func (a *App) reapplyCore() {
 	}
 }
 
+// sysproxySetHook 是系统代理写入的注入点，测试用。
+var sysproxySetHook = sysproxy.Set
+
+// applySystemProxy applies the system proxy switch to the OS.
 func (a *App) applySystemProxy() {
 	// Drain the guard BEFORE writing, so a pending guard write cannot race
 	// with our explicit set and resurrect a proxy we just disabled.
@@ -697,11 +656,14 @@ func (a *App) applySystemProxy() {
 		port = a.EffectivePort
 	}
 	server := fmt.Sprintf("127.0.0.1:%d", port)
-	setErr := sysproxy.Set(a.Settings.EnableSystemProxy, server, a.Settings.ProxyBypass)
+	setErr := sysproxySetHook(a.Settings.EnableSystemProxy, server, a.Settings.ProxyBypass)
 	if setErr != nil {
 		a.notify("系统代理", "设置失败："+setErr.Error())
 	}
 	a.mustSaveSettings()
+	// 出口 IP 跟着系统代理开关变：代理关了就应该显示直连出口。
+	a.ExitIP = nil
+	go a.refreshExitIP()
 	// Only re-arm the guard after a successful write (never point the guard at
 	// a target we failed to apply — a reference GUI's "never guard a failed target").
 	if setErr == nil && a.Settings.EnableSystemProxy {

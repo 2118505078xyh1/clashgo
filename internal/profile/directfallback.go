@@ -30,7 +30,7 @@ func EnsureDirectFallback(yamlText string) string {
 	var out strings.Builder
 	inserted := false
 	inRules := false
-	for _, line := range lines {
+	for i, line := range lines {
 		trimmed := strings.TrimRight(line, " \t\r")
 		if !inserted && strings.TrimSpace(trimmed) != "" &&
 			strings.HasPrefix(strings.TrimSpace(trimmed), "rules:") {
@@ -41,8 +41,11 @@ func EnsureDirectFallback(yamlText string) string {
 			if strings.Contains(trimmed, "[") {
 				return yamlText
 			}
-			out.WriteString("  - " + directFallbackRule1 + "\n")
-			out.WriteString("  - " + directFallbackRule2 + "\n")
+			// 沿用原文件 rules 列表的实际缩进：YAML 里同一列表的子项缩进
+			// 不一致会被解析成两个不同的块，后面的规则会整体丢失。
+			indent := detectListIndent(lines, i)
+			out.WriteString(indent + "- " + directFallbackRule1 + "\n")
+			out.WriteString(indent + "- " + directFallbackRule2 + "\n")
 			inserted = true
 			continue
 		}
@@ -64,6 +67,23 @@ func EnsureDirectFallback(yamlText string) string {
 		result = strings.TrimSuffix(result, "\n")
 	}
 	return result
+}
+
+// detectListIndent 找出 rules 列表第一项使用的缩进。
+// 找不到列表项时返回空串（rules 是空列表）。
+func detectListIndent(lines []string, rulesIdx int) string {
+	for i := rulesIdx + 1; i < len(lines); i++ {
+		l := lines[i]
+		if strings.TrimSpace(l) == "" {
+			continue
+		}
+		if !strings.HasPrefix(strings.TrimSpace(l), "-") {
+			return "" // 下一行不是列表项：rules 是空列表
+		}
+		// 取 "- " 之前的空白作为缩进。
+		return l[:len(l)-len(strings.TrimLeft(l, " \t"))]
+	}
+	return "  "
 }
 
 // hasDirectRule 判断配置里是否已经存在指向 DIRECT 的规则。

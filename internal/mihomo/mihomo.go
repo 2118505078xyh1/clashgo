@@ -26,14 +26,15 @@ import (
 
 // Core is a running mihomo instance.
 type Core struct {
-	mu      sync.Mutex
-	cmd     *exec.Cmd
-	workDir string
-	config  string
-	yaml    []byte
-	started bool
-	binary  string
-	logPath string
+	mu         sync.Mutex
+	cmd        *exec.Cmd
+	workDir    string
+	config     string
+	yaml       []byte
+	started    bool
+	binary     string
+	logPath    string
+	controller string
 }
 
 // Options configures a core instance.
@@ -95,6 +96,10 @@ func (c *Core) Apply(yamlBytes []byte, opts Options) error {
 	c.stopLocked()
 	c.mu.Unlock()
 
+	// 清理上一次异常退出（被强杀 / 崩溃）遗留的孤儿内核进程：
+	// 它们会占住端口，导致新内核起不来。
+	killOrphans(bin, opts.Controller, workDir)
+
 	// 隐藏控制台窗口：mihomo 是控制台程序，直接启动会弹黑框。
 	cmd := hidewin.CommandNoConsole(bin, "-d", workDir, "-f", cfgPath)
 	cmd.Dir = workDir
@@ -120,6 +125,7 @@ func (c *Core) Apply(yamlBytes []byte, opts Options) error {
 	c.yaml = append([]byte(nil), yamlBytes...)
 	c.started = true
 	c.logPath = logPath
+	c.controller = opts.Controller
 	c.mu.Unlock()
 
 	// 等待控制端口就绪，避免 UI 立刻发请求时连接被拒。
@@ -172,18 +178,23 @@ func (c *Core) stopLocked() {
 		return
 	}
 	// 先请求正常退出，超时再强杀，避免留下孤儿进程占住端口。
+	cmd := c.cmd
+	c.cmd = nil
+	c.started = false
+
 	done := make(chan struct{})
 	go func() {
-		_ = c.cmd.Process.Kill()
+		_ = cmd.Process.Kill()
 		close(done)
 	}()
 	select {
 	case <-done:
 	case <-time.After(3 * time.Second):
 	}
-	_ = c.cmd.Wait()
-	c.cmd = nil
-	c.started = false
+	_ = cmd.Wait()
+	// 进程退出后端口可能还在 TIME_WAIT 或尚未释放，
+	// 等一下再启动新内核，否则新进程会报 "bind: address already in use"。
+	waitPortFree(c.controller, 5*time.Second)
 }
 
 // Started reports whether the core process is running.
@@ -331,6 +342,30 @@ func copyFile(from, to string) error {
 	defer dst.Close()
 	_, err = io.Copy(dst, src)
 	return err
+}
+
+// waitPortFree 等待控制端口释放。
+//
+// 内核进程退出后，监听套接字的释放可能有短暂延迟（尤其 Windows 上
+// 处于 TIME_WAIT 的连接）。不等待就启动新内核会报 "bind: address
+// already in use"，导致新内核起不来、旧配置仍在生效。
+func waitPortFree(addr string, timeout time.Duration) {
+	if addr == "" {
+		return
+	}
+	host, portStr, err := net.SplitHostPort(addr)
+	if err != nil {
+		return
+	}
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		ln, err := net.Listen("tcp", net.JoinHostPort(host, portStr))
+		if err == nil {
+			_ = ln.Close()
+			return
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
 }
 
 // ControllerPort 从 external-controller 地址里取出端口号。

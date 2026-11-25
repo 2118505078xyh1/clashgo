@@ -7,7 +7,7 @@ import (
 )
 
 func (a *App) pageDNS(c *ui.Context) {
-	ui.Column(c).Fill().Padding(24).Gap(14).Children(func() {
+	ui.Column(c).Fill().Padding(spaceLg).Gap(spaceMd).Children(func() {
 		ui.Row(c).Gap(12).AlignItems(ui.Center).Children(func() {
 			text(c, a.tr("dns")).FontSize(24).Bold().Grow(1)
 			ui.TextInput(c, &a.Search).Placeholder("搜索域名…").Width(220)

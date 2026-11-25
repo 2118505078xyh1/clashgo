@@ -123,3 +123,20 @@ func ReconnectStream(ctx context.Context, name string, start func(context.Contex
 func logfStream(name string, err error) {
 	fmt.Printf("[clashgo] stream %s: %v\n", name, err)
 }
+
+// DialTraffic 建立 traffic WebSocket 连接（诊断用：返回连接状态）。
+func (c *Client) DialTraffic(ctx context.Context) error {
+	conn, err := c.dial("/traffic")
+	if err != nil {
+		return err
+	}
+	go func() {
+		for {
+			_, _, err := conn.Read(ctx)
+			if err != nil {
+				return
+			}
+		}
+	}()
+	return nil
+}

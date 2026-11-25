@@ -12,3 +12,18 @@ dist/
 # 构建产物目录：只保留占位文件，不提交任何二进制
 cmd/setup/payload/*
 !cmd/setup/payload/.keep
+
+# 本地运行数据与调试产物（可能含真实节点/连接信息，禁止提交）
+data/
+cn.json
+shot-*.png
+*.log
+*.tmp
+*.bak
+
+# 编辑器/系统
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+

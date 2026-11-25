@@ -23,56 +23,35 @@ var (
 
 func (a *App) pageProxies(c *ui.Context) {
 	t := c.Theme()
-	ui.Column(c).Fill().Padding(24).Gap(14).Children(func() {
-		// Shared heading: only the overflow menu and the help button sit here.
-		a.pageHeader(c, "代理组与节点", func() {
-			ui.PopoverMenuButton(c, "⋮", func(m *ui.Menu) {
-				if m.Item("定位当前节点").Chosen() {
-					a.locateCurrent()
-				}
-				hide := "隐藏不可用节点"
-				if a.HideUnavailable {
-					hide = "显示不可用节点"
-				}
-				if m.Item(hide).Chosen() {
-					a.HideUnavailable = !a.HideUnavailable
-				}
-				if m.Item("按地区建组").Chosen() {
-					a.generateRegionGroups()
-				}
-				if m.Item("清除置顶").Chosen() {
-					pinnedNodes = map[string]bool{}
-				}
-				regionLabel := "地区分组视图"
-				if regionGroupView {
-					regionLabel = "平铺节点视图"
-				}
-				if m.Item(regionLabel).Chosen() {
-					regionGroupView = !regionGroupView
-				}
-				m.Separator()
-				for i, label := range []string{"默认排序", "按名称", "按延迟"} {
-					idx := i
-					if m.Item(label).Radio(a.ProxySortMode == idx).Chosen() {
-						a.ProxySortMode = idx
-					}
-				}
-				if len(groupExpanded) > 0 && m.Item("全部折叠").Chosen() {
-					groupExpanded = map[string]bool{}
-				}
-			})
-		})
+	ui.Column(c).Fill().Padding(spaceLg).Gap(spaceMd).Children(func() {
 
 		// 工具栏：搜索与测速；模式切换在侧栏。
-		card(c, func() {
-			ui.Row(c).Gap(10).AlignItems(ui.Center).Wrap().Children(func() {
+		cardFlat(c, func() {
+			ui.Row(c).Gap(spaceMd).AlignItems(ui.Center).Wrap().Children(func() {
 				ui.TextInput(c, &a.Search).Placeholder("搜索节点…").Width(220)
-				if ui.PrimaryButton(c, a.tr("test_delay")).Clicked() {
-					a.testAllDelays()
+				primaryButton(c, a.tr("test_delay"), func() { a.testAllDelays() })
+				if len(a.busyNodes) > 0 {
+					pillButton(c, "取消测速", "停止当前测速", func() { a.cancelDelayTest() })
 				}
-				if len(a.busyNodes) > 0 && ui.Button(c, "取消测速").Clicked() {
-					a.cancelDelayTest()
+				// 测速完自动按延迟排序，不需要单独的排序菜单。
+				hideLabel := "隐藏不可用"
+				if a.HideUnavailable {
+					hideLabel = "显示不可用"
 				}
+				pillButton(c, hideLabel, "切换不可用节点的显示", func() {
+					a.HideUnavailable = !a.HideUnavailable
+				})
+				groupLabel := "按地区分组"
+				if regionGroupView {
+					groupLabel = "平铺视图"
+				}
+				pillButton(c, groupLabel, "切换分组方式", func() {
+					if regionGroupView {
+						regionGroupView = false
+					} else {
+						a.generateRegionGroups()
+					}
+				})
 			})
 		})
 
@@ -93,7 +72,7 @@ func (a *App) pageProxies(c *ui.Context) {
 				group := g
 				card(c, func() {
 					expanded := groupExpanded[group.Name]
-					ui.Row(c).AlignItems(ui.Center).Gap(10).Children(func() {
+					ui.Row(c).AlignItems(ui.Center).Gap(spaceMd).Children(func() {
 						chev := iconChevronRight
 						if expanded {
 							chev = iconChevronDown
@@ -101,31 +80,18 @@ func (a *App) pageProxies(c *ui.Context) {
 						iconAction(c, chev, "展开/折叠", func() {
 							groupExpanded[group.Name] = !expanded
 						}, false)
-						ui.Box(c).Size(28, 28).Radius(8).Center().Background(withAlpha(t.Accent, 0.14)).
-							Children(func() { ui.Icon(c, iconProxy).FontSize(16).TextColor(t.Accent) })
-						ui.Column(c).Gap(2).Children(func() {
+						iconBadge(c, iconProxy, ui.Hex(brandPrimary), withAlpha(ui.Hex(brandPrimary), 0.14), 30)
+						ui.Column(c).Gap(2).Grow(1).Children(func() {
 							text(c, group.Name).Bold().FontSize(15)
-							text(c, fmt.Sprintf("%d 个节点", len(group.All))).FontSize(11).TextColor(t.TextMuted)
-						}).Grow(1)
-						text(c, group.Now).TextColor(t.Accent).FontSize(13)
+							text(c, fmt.Sprintf("%d 个节点", len(group.All))).FontSize(11).TextColor(ui.Hex(textTertiary))
+						})
+						// 当前节点用徽标突出，一眼看到选中了谁。
+						badge(c, group.Now, t.Accent, withAlpha(t.Accent, 0.15))
 						busy := a.busyNodes["group:"+group.Name]
 						if busy {
 							iconAction(c, iconGauge, "测速中…", func() {}, true)
 						} else {
 							iconAction(c, iconGauge, "延迟测速", func() { a.testGroup(group.Name) }, false)
-						}
-						if a.NodeProbeBusy {
-							iconAction(c, iconTarget, "探测中…", func() {}, true)
-						} else {
-							iconAction(c, iconTarget, "探测出口地区", func() { a.probeNodeIPs(group.Name, group.All, group.Now) }, false)
-						}
-						a.SpeedMu.Lock()
-						speedBusy := a.SpeedTestBusy
-						a.SpeedMu.Unlock()
-						if speedBusy {
-							iconAction(c, iconSpeed, "停止测速", a.cancelSpeedtest, false)
-						} else {
-							iconAction(c, iconSpeed, "完整测速", func() { a.runFullSpeedtest(group.Name, group.All, group.Now) }, false)
 						}
 					})
 					if expanded {
@@ -156,16 +122,7 @@ func (a *App) pageProxies(c *ui.Context) {
 										text(c, typeLabel).FontSize(10).TextColor(t.TextMuted)
 									}
 								}).Grow(1)
-								// Delay history bars.
-								a.delayBars(c, n)
-								if region := a.nodeRegionLabel(n); region != "" {
-									ui.Badge(c, region).Width(44)
-								}
 								text(c, delayText(a.Delays[n])).FontSize(12).TextColor(a.delayColor(n)).Width(56)
-								if sr, ok := a.SpeedResults[n]; ok && sr.DownloadKbps > 0 {
-									text(c, "↓"+fmt.Sprintf("%.0fK", sr.DownloadKbps)).FontSize(11).
-										TextColor(t.Success).Width(60)
-								}
 								// Lightweight stand-ins for drag-and-drop sorting.
 								pin := "☆"
 								if pinnedNodes[n] {
@@ -400,25 +357,26 @@ func (a *App) nodeVisible(node string) bool {
 	return true
 }
 
-// delayBars draws up to 10 small colored bars from the delay history.
+// delayBars 显示节点的延迟（毫秒）。
+//
+// 之前这里画的是一排信号格，但用户看不清具体数值。
+// 直接显示数字更实用：延迟是毫秒，图例不够精确。
 func (a *App) delayBars(c *ui.Context, node string) {
 	p := a.Proxies[node]
 	hist := p.History
-	if len(hist) > 10 {
-		hist = hist[len(hist)-10:]
-	}
-	ui.Row(c).Gap(2).Width(70).Children(func() {
-		for _, h := range hist {
-			col := c.Theme().Success
-			switch {
-			case h.Delay < 0:
-				col = c.Theme().Danger
-			case h.Delay >= 200:
-				col = c.Theme().Warning
-			}
-			ui.Box(c).Size(5, 12).Radius(1).Background(withAlpha(col, 0.85))
+	if len(hist) > 0 {
+		last := hist[len(hist)-1].Delay
+		col := ui.Hex(colorSuccess)
+		switch {
+		case last < 0:
+			col = ui.Hex(colorDanger)
+		case last >= 200:
+			col = ui.Hex(colorWarning)
 		}
-	})
+		text(c, fmt.Sprintf("%d", last)).FontSize(12).TextColor(col).Width(46)
+		return
+	}
+	text(c, "-").FontSize(12).TextColor(ui.Hex(textTertiary)).Width(46)
 }
 
 func (a *App) locateCurrent() {
