@@ -42,6 +42,10 @@ type Settings struct {
 	AutoLaunch  bool `yaml:"auto-launch" json:"auto-launch"`
 	SilentStart bool `yaml:"silent-start" json:"silent-start"`
 
+	// 内核后端：self = 进程内自研内核；mihomo = 外部 mihomo 核心。
+	// mihomo 后端在 Reality / XTLS Vision 等细节上更成熟。
+	CoreBackend string `yaml:"core-backend" json:"core-backend"`
+
 	// PAC
 	EnablePAC       bool   `yaml:"enable-pac" json:"enable-pac"`
 	EnablePACSystem bool   `yaml:"enable-pac-system" json:"enable-pac-system"`
@@ -89,6 +93,7 @@ func DefaultSettings() *Settings {
 		Secret:             "clashgo",
 		Mode:               "rule",
 		LogLevel:           "info",
+		CoreBackend:        "mihomo",
 		ProxyBypass:        "localhost,127.0.0.1,::1,*.local,*.arpa,<local>",
 		TUNStack:           "gvisor",
 		TUNAutoRoute:       true,

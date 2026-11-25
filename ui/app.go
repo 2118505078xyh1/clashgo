@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -199,7 +200,13 @@ func newAppWithOptions(skipCore bool) (*App, error) {
 			return nil, err
 		}
 	}
-	k := kernel.New()
+	// 内核后端由配置决定：默认 mihomo（Reality/Vision 等细节更成熟），
+	// 可切回进程内自研内核。
+	backend := kernel.BackendSelf
+	if s.CoreBackend == string(kernel.BackendMihomo) {
+		backend = kernel.BackendMihomo
+	}
+	k := kernel.NewWithBackend(backend, filepath.Join(paths.Home, "core"))
 	client := controller.New(s.ExternalController, s.Secret)
 
 	a := &App{

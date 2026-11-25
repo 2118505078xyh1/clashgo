@@ -7,6 +7,11 @@ import "os/exec"
 // Command returns an exec.Cmd (no window concept on non-Windows).
 func Command(name string, args ...string) *exec.Cmd { return exec.Command(name, args...) }
 
+// CommandNoConsole returns an exec.Cmd (no window concept on non-Windows).
+func CommandNoConsole(name string, args ...string) *exec.Cmd {
+	return exec.Command(name, args...)
+}
+
 // Output runs the command and returns stdout.
 func Output(name string, args ...string) ([]byte, error) { return Command(name, args...).Output() }
 
